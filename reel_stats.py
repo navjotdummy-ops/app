@@ -517,6 +517,9 @@ class InstagramBrowser:
             headless=self.headless,
             viewport={"width": 1280, "height": 900},
             locale="en-US",
+            # Keep Chrome's own sandbox on. Playwright turns it off by default,
+            # which makes real Chrome show a grey "unsupported flag" banner.
+            chromium_sandbox=True,
             args=["--disable-blink-features=AutomationControlled"],
         )
         try:
