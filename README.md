@@ -258,9 +258,10 @@ That installs a daily 10:00 job using launchd (Mac), Task Scheduler
 in this folder. Useful variations:
 
 ```
-python schedule_daily.py --time 09:30   # a different time
-python schedule_daily.py --show         # see what is installed
-python schedule_daily.py --remove       # uninstall
+python schedule_daily.py --time 09:30         # a different time
+python schedule_daily.py --time 12:00,19:00   # twice a day
+python schedule_daily.py --show               # see what is installed
+python schedule_daily.py --remove             # uninstall
 ```
 
 Each run writes its own file in the `logs/` folder, named by date and time,
