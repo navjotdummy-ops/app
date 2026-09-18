@@ -13,8 +13,9 @@ What it never does:
 - It never likes, comments, follows, or clicks anything on Instagram. It only
   reads.
 - It only writes to the **Views, Likes, Comments, Last Updated and Status**
-  columns of your first tab, and only **adds** rows to History. Nothing else
-  is changed or deleted.
+  columns of your first tab. In History it keeps one line per reel per day:
+  a later run on the same day overwrites that day's line, and lines from
+  earlier days are never changed or deleted.
 
 Everything below is written for someone who has never used a terminal. Each
 step says exactly what to type. Budget about 30 minutes the first time.

@@ -415,7 +415,7 @@ class SheetClient:
         if not entries:
             return
         if self.dry_run:
-            log.info("[dry-run] would append %d row(s) to '%s'", len(entries), HISTORY_TAB)
+            log.info("[dry-run] would write %d line(s) to '%s'", len(entries), HISTORY_TAB)
             return
         try:
             hist = self.spreadsheet.worksheet(HISTORY_TAB)
@@ -427,8 +427,33 @@ class SheetClient:
             first_row = hist.row_values(1)
             if not any(first_row):
                 hist.update(range_name="A1", values=[HISTORY_HEADERS])
-        # append_rows only ever adds new rows at the bottom; old rows are untouched.
-        self._with_retry(lambda: hist.append_rows(entries, value_input_option="RAW", table_range="A1"))
+
+        # One line per reel per day: a later run on the same day overwrites
+        # that day's numbers instead of adding a second line. Earlier days are
+        # never touched.
+        existing = self._with_retry(hist.get_all_values)
+        by_key: dict[tuple[str, str], int] = {}
+        for idx, row in enumerate(existing[1:], start=2):
+            if len(row) >= 2 and row[0] and row[1]:
+                by_key.setdefault((row[0].strip(), row[1].strip()), idx)
+
+        updates = []
+        new_rows = []
+        for entry in entries:
+            key = (str(entry[0]).strip(), str(entry[1]).strip())
+            row_idx = by_key.get(key)
+            if row_idx:
+                a1 = f"A{row_idx}:{self.gspread.utils.rowcol_to_a1(row_idx, len(entry))}"
+                updates.append({"range": a1, "values": [entry]})
+            else:
+                new_rows.append(entry)
+        if updates:
+            self._with_retry(lambda: hist.batch_update(updates, value_input_option="RAW"))
+            log.info("Updated %d existing line(s) in '%s' for today.", len(updates), HISTORY_TAB)
+        if new_rows:
+            # append_rows only ever adds new rows at the bottom; old rows are untouched.
+            self._with_retry(lambda: hist.append_rows(new_rows, value_input_option="RAW", table_range="A1"))
+            log.info("Added %d new line(s) to '%s'.", len(new_rows), HISTORY_TAB)
 
     @staticmethod
     def _with_retry(fn, attempts: int = 4):
