@@ -67,6 +67,11 @@ assumes the terminal is "inside" this folder.
 
 ### 1.4 Install the two libraries the script needs
 
+The quick way is one command. Mac: `bash setup.sh`. Windows (PowerShell):
+`.\setup.ps1`. It creates the private folder, installs the libraries,
+downloads the browser, and prints the robot email once the key file is in
+place. If you prefer to see each step, here they are by hand.
+
 Mac:
 
 ```
@@ -319,6 +324,7 @@ and scrolling for a minute usually clears it.
 | `reel_stats.py` | The tracker itself |
 | `schedule_daily.py` | Installs or removes the daily 10:00 schedule |
 | `run_tracker.sh`, `run_tracker.bat` | Tiny launchers used by the schedule |
+| `setup.sh`, `setup.ps1` | One-command install of everything in Part 1.4 |
 | `requirements.txt` | The two libraries to install |
 | `tests/test_parsing.py` | Automated checks of the number-parsing logic (`python -m unittest`) |
 | `service-account.json` | Your Google key. Not in Git. You create it in step 2.3 |
