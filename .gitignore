@@ -1,0 +1,21 @@
+# Google service account key: NEVER commit this
+service-account.json
+*.json
+!package.json
+
+# Saved Instagram browser session (contains login cookies)
+browser_profile/
+
+# Run logs
+logs/*
+!logs/.gitkeep
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# OS junk
+.DS_Store
+Thumbs.db

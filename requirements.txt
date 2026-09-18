@@ -1,0 +1,2 @@
+gspread>=6.0,<7
+playwright>=1.45
