@@ -575,6 +575,12 @@ class InstagramBrowser:
         if self.is_logged_in() and not force_login:
             log.info("Instagram session found in the saved browser profile.")
             return
+        if force_login and self._has_session_cookie():
+            # --login means "switch account": forget the saved session first.
+            log.info("Clearing the saved Instagram session so you can log in again.")
+            self.context.clear_cookies()
+            self.page.goto("https://www.instagram.com/accounts/login/", wait_until="domcontentloaded")
+            self.page.wait_for_timeout(2000)
         if self.headless:
             log.info("Not logged in; opening a visible browser window so you can log in.")
             self.restart(headless=False)
@@ -742,7 +748,8 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Daily Instagram reel stats tracker (read-only).")
     p.add_argument("--dry-run", action="store_true", help="Print results, write nothing to the sheet.")
     p.add_argument("--limit", type=int, default=None, help="Only process the first N rows with a link.")
-    p.add_argument("--login", action="store_true", help="Open a visible window and wait for a fresh login.")
+    p.add_argument("--login", action="store_true",
+                   help="Forget the saved Instagram session and wait for a fresh login (use this to switch accounts).")
     p.add_argument("--headless", action="store_true",
                    help="Run the browser invisibly (default is a visible window, which Instagram tolerates better).")
     p.add_argument("--sheet-id", default=DEFAULT_SHEET_ID, help="Google Sheet ID (from the URL).")

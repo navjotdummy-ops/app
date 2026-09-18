@@ -290,7 +290,9 @@ for you and show it in its scheduled-tasks list.
 | `Blocked` | Instagram showed "try again later" or a checkpoint; the run stopped | Old numbers kept |
 
 When you see `Login needed`, run `python reel_stats.py --login`, log in
-again in the window, and the run continues.
+again in the window, and the run continues. The same command lets you
+switch to a different Instagram account: it forgets the saved session and
+shows the login page again.
 
 When you see `Blocked`, wait a few hours. Instagram rate-limits accounts that
 open many pages quickly; the 8 to 15 second pause keeps this rare. Opening
