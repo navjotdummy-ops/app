@@ -13,7 +13,9 @@ What it never does:
 - It never likes, comments, follows, or clicks anything on Instagram. It only
   reads.
 - It only writes to the **Views, Likes, Comments, Last Updated and Status**
-  columns of your first tab. In History it keeps one line per reel per day:
+  columns of your first tab, plus **Creator Name** and **Handle** when those
+  cells are empty (it never overwrites a name or handle you typed yourself).
+  In History it keeps one line per reel per day:
   a later run on the same day overwrites that day's line, and lines from
   earlier days are never changed or deleted.
 
@@ -165,7 +167,9 @@ The script finds columns by their header names. It will stop with a clear
 message if `Reel Link`, `Views`, `Likes`, `Comments`, `Last Updated` or
 `Status` is missing. It never adds columns on its own.
 
-Handles can be written with or without the `@`.
+Handles can be written with or without the `@`. You can also leave Creator
+Name and Handle empty: the script fills them in from Instagram on the next
+run.
 
 ---
 

@@ -137,6 +137,7 @@ class ReelStats:
     likes_hidden: bool = False
     approx: bool = False
     owner_handle: Optional[str] = None
+    owner_name: Optional[str] = None
     sources: list[str] = field(default_factory=list)
     raw_fields: dict[str, Any] = field(default_factory=dict)
 
@@ -163,6 +164,8 @@ class ReelStats:
             took_something = True
         if self.owner_handle is None and other.owner_handle:
             self.owner_handle = other.owner_handle
+        if self.owner_name is None and other.owner_name:
+            self.owner_name = other.owner_name
         if took_something:
             self.sources.extend(s for s in other.sources if s not in self.sources)
         for k, v in other.raw_fields.items():
@@ -255,6 +258,9 @@ def extract_stats_from_json(data: Any, shortcode: str, source: str = "json") -> 
             owner = node.get(owner_key)
             if isinstance(owner, dict) and owner.get("username"):
                 stats.owner_handle = str(owner["username"]).lstrip("@")
+                full_name = owner.get("full_name")
+                if isinstance(full_name, str) and full_name.strip():
+                    stats.owner_name = full_name.strip()
                 break
         if not (stats.views is not None or stats.likes is not None or stats.comments is not None
                 or stats.likes_hidden or stats.owner_handle):
@@ -398,7 +404,7 @@ class SheetClient:
 
     def write_row(self, row: SheetRow, values: dict[str, Any]) -> None:
         """values maps a column name (Views/Likes/...) to the new cell value."""
-        allowed = {COL_VIEWS, COL_LIKES, COL_COMMENTS, COL_UPDATED, COL_STATUS}
+        allowed = {COL_VIEWS, COL_LIKES, COL_COMMENTS, COL_UPDATED, COL_STATUS, COL_CREATOR, COL_HANDLE}
         bad = set(values) - allowed
         if bad:
             raise ValueError(f"Refusing to write to protected columns: {bad}")
@@ -866,6 +872,11 @@ def main(argv: Optional[list[str]] = None) -> int:
                     values[COL_LIKES] = "Hidden"
                 if stats.comments is not None:
                     values[COL_COMMENTS] = stats.comments
+                # Fill in the creator's name and handle only where the cell is empty.
+                if not row.creator and stats.owner_name and COL_CREATOR in sheet.columns:
+                    values[COL_CREATOR] = stats.owner_name
+                if not row.handle and stats.owner_handle and COL_HANDLE in sheet.columns:
+                    values[COL_HANDLE] = stats.owner_handle
                 sheet.write_row(row, values)
                 likes_cell = "Hidden" if (stats.likes is None and stats.likes_hidden) else stats.likes
                 history.append([today, row.link,

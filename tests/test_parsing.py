@@ -36,10 +36,11 @@ class TestJsonExtraction(unittest.TestCase):
     def test_api_v1_shape(self):
         data = {"items": [{"code": "ABC", "play_count": 15342, "ig_play_count": 15342,
                            "like_count": 812, "comment_count": 44,
-                           "user": {"username": "creator_one"}}]}
+                           "user": {"username": "creator_one", "full_name": "Creator One"}}]}
         stats = rs.extract_stats_from_json(data, "ABC")
         self.assertEqual((stats.views, stats.likes, stats.comments), (15342, 812, 44))
         self.assertEqual(stats.owner_handle, "creator_one")
+        self.assertEqual(stats.owner_name, "Creator One")
         self.assertFalse(stats.approx)
         self.assertFalse(stats.likes_hidden)
 
