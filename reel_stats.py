@@ -381,6 +381,21 @@ class SheetClient:
             col = lookup.get(normalize_header(name))
             if col:
                 self.columns[name] = col
+        if COL_SHARES not in self.columns:
+            # The one header the script adds by itself: "Shares", in the first
+            # empty cell of row 1. Nothing else about the layout is touched.
+            col = len(headers) + 1
+            for i, h in enumerate(headers, start=1):
+                if not h.strip():
+                    col = i
+                    break
+            a1 = self.gspread.utils.rowcol_to_a1(1, col)
+            if self.dry_run:
+                log.info("[dry-run] would add a '%s' header at %s", COL_SHARES, a1)
+            else:
+                self._with_retry(lambda: self.ws.update(range_name=a1, values=[[COL_SHARES]]))
+                log.info("Added a '%s' header at %s.", COL_SHARES, a1)
+                self.columns[COL_SHARES] = col
         log.info("Column map: %s", {k: self.gspread.utils.rowcol_to_a1(1, v)[:-1] for k, v in self.columns.items()})
 
         def cell(row: list[str], name: str) -> str:

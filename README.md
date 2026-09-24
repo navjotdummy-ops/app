@@ -171,9 +171,11 @@ Handles can be written with or without the `@`. You can also leave Creator
 Name and Handle empty: the script fills them in from Instagram on the next
 run.
 
-Optional: add a **Shares** header and the script fills in the reel's share
-count too (blank when Instagram does not provide it). Save counts are not
-available: Instagram only shows them to the account that posted the reel.
+The script also fills in a **Shares** column with the reel's share count
+(blank when Instagram does not provide it). If row 1 has no `Shares` header,
+the script adds one in the first empty column on its first run; that is the
+only header it ever adds. Save counts are not available: Instagram only shows
+them to the account that posted the reel.
 
 ---
 
