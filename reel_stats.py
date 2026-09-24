@@ -264,6 +264,9 @@ def extract_stats_from_json(data: Any, shortcode: str, source: str = "json") -> 
                 stats.raw_fields[key] = v
                 if stats.shares is None:
                     stats.shares = v
+        for key, v in node.items():
+            if ("share" in key or "save" in key) and key not in stats.raw_fields and _as_int(v) is not None:
+                stats.raw_fields[key] = _as_int(v)
         if node.get("like_and_view_counts_disabled") is True and stats.likes is None:
             stats.likes_hidden = True
         for owner_key in ("owner", "user"):
@@ -734,16 +737,16 @@ class InstagramBrowser:
         if stats.views is None:
             handle = handle_hint or stats.owner_handle
             if handle:
-                views, approx = self._views_from_reels_tab(handle, shortcode)
-                if views is not None:
-                    stats.views = views
-                    stats.approx = stats.approx or approx
-                    stats.sources.append("Reels tab")
+                found = self._from_reels_tab(handle, shortcode)
+                if found is not None and found.views is not None:
+                    stats.merge_missing(found)
                     notes.append("views from Reels tab")
                 else:
                     notes.append("views not found")
             else:
                 notes.append("views not found (no handle)")
+        if stats.raw_fields:
+            log.debug("All raw fields for %s: %s", shortcode, stats.raw_fields)
 
         if stats.likes is None and stats.likes_hidden:
             notes.append("likes hidden")
@@ -756,25 +759,26 @@ class InstagramBrowser:
             raise ReelFailed("Failed to read stats from the page")
         return stats, notes
 
-    def _views_from_reels_tab(self, handle: str, shortcode: str) -> tuple[Optional[int], bool]:
+    def _from_reels_tab(self, handle: str, shortcode: str) -> Optional[ReelStats]:
+        """Open the creator's Reels grid and return everything found for this reel."""
         url = f"https://www.instagram.com/{handle}/reels/"
         log.info("Views not on the reel page; checking %s", url)
         try:
             self.page.goto(url, wait_until="domcontentloaded")
         except Exception as exc:
             log.warning("Reels tab failed to load: %s", exc)
-            return None, False
+            return None
         self.page.wait_for_timeout(4000)
         try:
             self._check_for_blockers()
         except ReelFailed:
-            return None, False
+            return None
         selector = f'a[href*="/reel/{shortcode}/"], a[href*="/p/{shortcode}/"]'
         for _ in range(12):  # scroll further down for older reels
             for source_url, body in list(self._json_bodies):
-                found = extract_stats_from_json(body, shortcode, source="Reels tab network")
+                found = extract_stats_from_json(body, shortcode, source="Reels tab")
                 if found and found.views is not None:
-                    return found.views, False
+                    return found
             tiles = self.page.locator(selector)
             if tiles.count() > 0:
                 try:
@@ -784,11 +788,11 @@ class InstagramBrowser:
                 for token in re.split(r"[\s\n]+", text):
                     value, approx = parse_count(token)
                     if value is not None:
-                        return value, approx
-                return None, False
+                        return ReelStats(views=value, approx=approx, sources=["Reels tab"])
+                return None
             self.page.mouse.wheel(0, 2500)
             self.page.wait_for_timeout(2000)
-        return None, False
+        return None
 
 
 # ---------------------------------------------------------------------------
