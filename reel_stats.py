@@ -47,11 +47,12 @@ COL_HANDLE = "Handle"
 COL_VIEWS = "Views"
 COL_LIKES = "Likes"
 COL_COMMENTS = "Comments"
+COL_SHARES = "Shares"          # optional: filled only if this header exists
 COL_UPDATED = "Last Updated"
 COL_STATUS = "Status"
 
 HISTORY_TAB = "History"
-HISTORY_HEADERS = ["Date", "Reel Link", "Views", "Likes", "Comments"]
+HISTORY_HEADERS = ["Date", "Reel Link", "Views", "Likes", "Comments", "Shares"]
 
 MIN_DELAY_SECONDS = 8
 MAX_DELAY_SECONDS = 15
@@ -134,6 +135,7 @@ class ReelStats:
     views: Optional[int] = None
     likes: Optional[int] = None
     comments: Optional[int] = None
+    shares: Optional[int] = None
     likes_hidden: bool = False
     approx: bool = False
     owner_handle: Optional[str] = None
@@ -159,6 +161,9 @@ class ReelStats:
             took_something = True
             if other.approx:
                 self.approx = True
+        if self.shares is None and other.shares is not None:
+            self.shares = other.shares
+            took_something = True
         if other.likes_hidden and not self.likes_hidden:
             self.likes_hidden = True
             took_something = True
@@ -184,6 +189,7 @@ class ReelStats:
 VIEW_KEYS = ("play_count", "ig_play_count", "view_count", "video_play_count", "video_view_count")
 LIKE_KEYS = ("like_count",)
 COMMENT_KEYS = ("comment_count",)
+SHARE_KEYS = ("reshare_count", "share_count")
 LIKE_NESTED = (("edge_media_preview_like", "count"), ("edge_liked_by", "count"))
 COMMENT_NESTED = (("edge_media_to_parent_comment", "count"), ("edge_media_to_comment", "count"))
 
@@ -252,6 +258,12 @@ def extract_stats_from_json(data: Any, shortcode: str, source: str = "json") -> 
                     stats.raw_fields[f"{parent}.{child}"] = v
                     if stats.comments is None:
                         stats.comments = v
+        for key in SHARE_KEYS:
+            v = _as_int(node.get(key))
+            if v is not None:
+                stats.raw_fields[key] = v
+                if stats.shares is None:
+                    stats.shares = v
         if node.get("like_and_view_counts_disabled") is True and stats.likes is None:
             stats.likes_hidden = True
         for owner_key in ("owner", "user"):
@@ -365,7 +377,7 @@ class SheetClient:
                 + ", ".join(missing)
                 + ". Add them (the script will not create columns by itself)."
             )
-        for name in needed + [COL_CREATOR, COL_HANDLE]:
+        for name in needed + [COL_CREATOR, COL_HANDLE, COL_SHARES]:
             col = lookup.get(normalize_header(name))
             if col:
                 self.columns[name] = col
@@ -404,7 +416,7 @@ class SheetClient:
 
     def write_row(self, row: SheetRow, values: dict[str, Any]) -> None:
         """values maps a column name (Views/Likes/...) to the new cell value."""
-        allowed = {COL_VIEWS, COL_LIKES, COL_COMMENTS, COL_UPDATED, COL_STATUS, COL_CREATOR, COL_HANDLE}
+        allowed = {COL_VIEWS, COL_LIKES, COL_COMMENTS, COL_SHARES, COL_UPDATED, COL_STATUS, COL_CREATOR, COL_HANDLE}
         bad = set(values) - allowed
         if bad:
             raise ValueError(f"Refusing to write to protected columns: {bad}")
@@ -433,6 +445,12 @@ class SheetClient:
             first_row = hist.row_values(1)
             if not any(first_row):
                 hist.update(range_name="A1", values=[HISTORY_HEADERS])
+            elif len([h for h in first_row if h]) < len(HISTORY_HEADERS):
+                # An older History tab without the newer columns: add the
+                # missing headers to the right. Existing cells are untouched.
+                missing = HISTORY_HEADERS[len(first_row):]
+                start = self.gspread.utils.rowcol_to_a1(1, len(first_row) + 1)
+                hist.update(range_name=start, values=[missing])
 
         # One line per reel per day: a later run on the same day overwrites
         # that day's numbers instead of adding a second line. Earlier days are
@@ -875,6 +893,8 @@ def main(argv: Optional[list[str]] = None) -> int:
                     values[COL_LIKES] = "Hidden"
                 if stats.comments is not None:
                     values[COL_COMMENTS] = stats.comments
+                if stats.shares is not None and COL_SHARES in sheet.columns:
+                    values[COL_SHARES] = stats.shares
                 # Fill in the creator's name and handle only where the cell is empty.
                 if not row.creator and stats.owner_name and COL_CREATOR in sheet.columns:
                     values[COL_CREATOR] = stats.owner_name
@@ -885,12 +905,13 @@ def main(argv: Optional[list[str]] = None) -> int:
                 history.append([today, row.link,
                                 stats.views if stats.views is not None else "",
                                 likes_cell if likes_cell is not None else "",
-                                stats.comments if stats.comments is not None else ""])
+                                stats.comments if stats.comments is not None else "",
+                                stats.shares if stats.shares is not None else ""])
                 updated.append(row)
                 results.append((row, stats, status))
-                log.info("Row %s: views=%s likes=%s comments=%s (%s) via %s",
+                log.info("Row %s: views=%s likes=%s comments=%s shares=%s (%s) via %s",
                          row.row_number, fmt(stats.views), fmt(likes_cell), fmt(stats.comments),
-                         status, ", ".join(stats.sources) or "unknown")
+                         fmt(stats.shares), status, ", ".join(stats.sources) or "unknown")
 
             if pending:
                 delay = random.uniform(args.min_delay, args.max_delay)
@@ -920,14 +941,14 @@ def main(argv: Optional[list[str]] = None) -> int:
     print("\n" + "=" * 78)
     print("RESULTS" + (" (dry run, nothing written)" if args.dry_run else ""))
     print("=" * 78)
-    print(f"{'Row':<4} {'Handle':<18} {'Views':>12} {'Likes':>10} {'Comments':>9}  Status")
+    print(f"{'Row':<4} {'Handle':<18} {'Views':>12} {'Likes':>10} {'Comments':>9} {'Shares':>8}  Status")
     for row, stats, status in results:
         if stats is None:
-            print(f"{row.row_number:<4} {row.handle[:18]:<18} {'':>12} {'':>10} {'':>9}  {status}")
+            print(f"{row.row_number:<4} {row.handle[:18]:<18} {'':>12} {'':>10} {'':>9} {'':>8}  {status}")
             continue
         likes = "Hidden" if (stats.likes is None and stats.likes_hidden) else stats.likes
         print(f"{row.row_number:<4} {(row.handle or stats.owner_handle or '')[:18]:<18} "
-              f"{fmt(stats.views):>12} {fmt(likes):>10} {fmt(stats.comments):>9}  {status}")
+              f"{fmt(stats.views):>12} {fmt(likes):>10} {fmt(stats.comments):>9} {fmt(stats.shares):>8}  {status}")
     print("-" * 78)
     print(f"Updated: {len(updated)}   Failed: {len(failed)}   Skipped: {len(skipped)}")
     if failed or skipped:

@@ -171,6 +171,10 @@ Handles can be written with or without the `@`. You can also leave Creator
 Name and Handle empty: the script fills them in from Instagram on the next
 run.
 
+Optional: add a **Shares** header and the script fills in the reel's share
+count too (blank when Instagram does not provide it). Save counts are not
+available: Instagram only shows them to the account that posted the reel.
+
 ---
 
 ## Part 3. First run and Instagram login
