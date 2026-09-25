@@ -258,6 +258,11 @@ script. This works, but it depends on the Claude desktop app being open at
 work at all here, because the Instagram login lives in the browser profile on
 your computer, not in the cloud.
 
+**Mac users:** keep the project folder directly in your home folder (for
+example `~/reel-stats`), not in Documents, Desktop or Downloads. macOS does
+not let scheduled jobs read those three folders, so the schedule would fail
+silently with "Operation not permitted". The installer checks this for you.
+
 To set up **Option A**, run once, from the project folder:
 
 ```

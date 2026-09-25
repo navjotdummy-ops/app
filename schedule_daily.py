@@ -245,6 +245,18 @@ def main() -> int:
     if not (BASE_DIR / "reel_stats.py").exists():
         raise SystemExit("Run this from the project folder that contains reel_stats.py")
 
+    if system == "Darwin" and not (args.show or args.remove):
+        home = Path.home()
+        for protected in ("Documents", "Desktop", "Downloads"):
+            if (home / protected) in BASE_DIR.parents:
+                raise SystemExit(
+                    f"This folder is inside ~/{protected}, which macOS does not let scheduled jobs read.\n"
+                    "The schedule would fail every time with 'Operation not permitted'.\n"
+                    "Move the project first, then run this again from the new place:\n"
+                    f"  mv {BASE_DIR} {home / BASE_DIR.name}\n"
+                    f"  cd {home / BASE_DIR.name} && .venv/bin/python schedule_daily.py --time {args.time}"
+                )
+
     if args.show:
         show()
     elif args.remove:

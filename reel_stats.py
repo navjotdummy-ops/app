@@ -140,6 +140,7 @@ class ReelStats:
     approx: bool = False
     owner_handle: Optional[str] = None
     owner_name: Optional[str] = None
+    media_id: Optional[str] = None
     sources: list[str] = field(default_factory=list)
     raw_fields: dict[str, Any] = field(default_factory=dict)
 
@@ -171,6 +172,8 @@ class ReelStats:
             self.owner_handle = other.owner_handle
         if self.owner_name is None and other.owner_name:
             self.owner_name = other.owner_name
+        if self.media_id is None and other.media_id:
+            self.media_id = other.media_id
         if took_something:
             self.sources.extend(s for s in other.sources if s not in self.sources)
         for k, v in other.raw_fields.items():
@@ -269,6 +272,11 @@ def extract_stats_from_json(data: Any, shortcode: str, source: str = "json") -> 
                 stats.raw_fields[key] = _as_int(v)
         if node.get("like_and_view_counts_disabled") is True and stats.likes is None:
             stats.likes_hidden = True
+        pk = node.get("pk") or node.get("id")
+        if pk is not None:
+            pk = str(pk).split("_")[0]
+            if pk.isdigit():
+                stats.media_id = pk
         for owner_key in ("owner", "user"):
             owner = node.get(owner_key)
             if isinstance(owner, dict) and owner.get("username"):
@@ -278,7 +286,7 @@ def extract_stats_from_json(data: Any, shortcode: str, source: str = "json") -> 
                     stats.owner_name = full_name.strip()
                 break
         if not (stats.views is not None or stats.likes is not None or stats.comments is not None
-                or stats.likes_hidden or stats.owner_handle):
+                or stats.likes_hidden or stats.owner_handle or stats.media_id):
             continue
         if result is None:
             result = stats
@@ -456,7 +464,7 @@ class SheetClient:
         try:
             hist = self.spreadsheet.worksheet(HISTORY_TAB)
         except self.gspread.WorksheetNotFound:
-            hist = self.spreadsheet.add_worksheet(title=HISTORY_TAB, rows=1000, cols=len(HISTORY_HEADERS))
+            hist = self.spreadsheet.add_worksheet(title=HISTORY_TAB, rows=1000, cols=max(10, len(HISTORY_HEADERS)))
             hist.update(range_name="A1", values=[HISTORY_HEADERS])
             log.info("Created the '%s' tab.", HISTORY_TAB)
         else:
@@ -464,11 +472,15 @@ class SheetClient:
             if not any(first_row):
                 hist.update(range_name="A1", values=[HISTORY_HEADERS])
             elif len([h for h in first_row if h]) < len(HISTORY_HEADERS):
-                # An older History tab without the newer columns: add the
-                # missing headers to the right. Existing cells are untouched.
+                # An older History tab without the newer columns: widen it if
+                # needed and add the missing headers to the right. Existing
+                # cells are untouched.
+                if hist.col_count < len(HISTORY_HEADERS):
+                    self._with_retry(lambda: hist.add_cols(len(HISTORY_HEADERS) - hist.col_count))
                 missing = HISTORY_HEADERS[len(first_row):]
                 start = self.gspread.utils.rowcol_to_a1(1, len(first_row) + 1)
-                hist.update(range_name=start, values=[missing])
+                self._with_retry(lambda: hist.update(range_name=start, values=[missing]))
+                log.info("Added %s to the '%s' tab header.", missing, HISTORY_TAB)
 
         # One line per reel per day: a later run on the same day overwrites
         # that day's numbers instead of adding a second line. Earlier days are
@@ -745,6 +757,12 @@ class InstagramBrowser:
                     notes.append("views not found")
             else:
                 notes.append("views not found (no handle)")
+        # 4. Share count: not in the usual responses, so ask Instagram's own
+        #    per-reel detail endpoint (read-only, same as the site does).
+        if stats.shares is None and stats.media_id:
+            found = self._media_info(stats.media_id, shortcode)
+            if found:
+                stats.merge_missing(found)
         if stats.raw_fields:
             log.debug("All raw fields for %s: %s", shortcode, stats.raw_fields)
 
@@ -758,6 +776,37 @@ class InstagramBrowser:
         if stats.views is None and stats.likes is None and stats.comments is None and not stats.likes_hidden:
             raise ReelFailed("Failed to read stats from the page")
         return stats, notes
+
+    def _media_info(self, media_id: str, shortcode: str) -> Optional[ReelStats]:
+        """Fetch /api/v1/media/<id>/info/ from inside the page (uses the login cookies)."""
+        js = """
+            async (id) => {
+                try {
+                    const r = await fetch(`https://www.instagram.com/api/v1/media/${id}/info/`, {
+                        credentials: 'include',
+                        headers: {'x-ig-app-id': '936619743392459', 'x-requested-with': 'XMLHttpRequest'}
+                    });
+                    if (!r.ok) return 'HTTP ' + r.status;
+                    return await r.text();
+                } catch (e) { return 'ERR ' + e; }
+            }
+        """
+        try:
+            body = self.page.evaluate(js, media_id)
+        except Exception as exc:
+            log.debug("media info request failed for %s: %s", shortcode, exc)
+            return None
+        if not isinstance(body, str) or body.startswith(("HTTP ", "ERR ")):
+            log.debug("media info for %s unavailable: %s", shortcode, body)
+            return None
+        try:
+            data = json.loads(body)
+        except ValueError:
+            return None
+        found = extract_stats_from_json(data, shortcode, source="media info")
+        if found:
+            log.debug("media info fields for %s: %s", shortcode, found.raw_fields)
+        return found
 
     def _from_reels_tab(self, handle: str, shortcode: str) -> Optional[ReelStats]:
         """Open the creator's Reels grid and return everything found for this reel."""
