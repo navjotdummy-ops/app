@@ -171,11 +171,9 @@ Handles can be written with or without the `@`. You can also leave Creator
 Name and Handle empty: the script fills them in from Instagram on the next
 run.
 
-The script also fills in a **Shares** column with the reel's share count
-(blank when Instagram does not provide it). If row 1 has no `Shares` header,
-the script adds one in the first empty column on its first run; that is the
-only header it ever adds. Save counts are not available: Instagram only shows
-them to the account that posted the reel.
+Share and save counts are not tracked: Instagram does not include either
+in the data it gives a viewer, even in its most detailed per-reel response.
+Only the account that posted the reel can see them, in its own Insights.
 
 ---
 
@@ -296,7 +294,7 @@ for you and show it in its scheduled-tasks list.
 | --- | --- | --- |
 | `OK` | Exact numbers read | Updated |
 | `OK (approx); ...` | Some numbers came from rounded visible text | Updated |
-| `OK; views from Reels tab` | Views were read from the creator's Reels grid | Updated |
+| `OK; views from Reels tab` | Views were read from the creator's Reels grid (rare fallback) | Updated |
 | `OK; likes hidden` | Creator hides likes; Likes cell says Hidden | Updated |
 | `Not available (deleted or private)` | Instagram says the page is gone | Old numbers kept |
 | `Private account` | The account is private and you do not follow it | Old numbers kept |
