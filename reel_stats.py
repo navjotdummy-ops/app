@@ -740,6 +740,21 @@ class InstagramBrowser:
             except Exception:
                 text = ""
             found = extract_stats_from_text(text)
+            # Likes must come from the post's own "N likes" link. Every comment
+            # on the page also says "N likes", so a body-text match is unsafe.
+            found.likes = None
+            if stats.likes is None and not stats.likes_hidden:
+                try:
+                    link = self.page.locator('a[href*="/liked_by/"]')
+                    if link.count() > 0:
+                        m = re.search(r"([0-9][0-9,.]*\s*[KkMmBb]?)", link.first.inner_text(timeout=3000))
+                        if m:
+                            value, approx = parse_count(m.group(1))
+                            if value is not None:
+                                found.likes = value
+                                found.approx = found.approx or approx
+                except Exception:
+                    pass
             before = (stats.views, stats.likes, stats.comments)
             stats.merge_missing(found)
             if (stats.views, stats.likes, stats.comments) != before:
