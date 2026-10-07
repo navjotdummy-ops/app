@@ -477,8 +477,23 @@ class SheetClient:
             if code:
                 by_code.setdefault(code, idx)
 
+        # Cells that hold a formula (for example an IMPORTRANGE lookup that
+        # already links the two sheets) are left alone.
+        formulas: set[str] = set()
+        try:
+            last_col = max(lookup.values())
+            rng = f"A1:{self.gspread.utils.rowcol_to_a1(len(values), last_col)}"
+            raw = self._with_retry(lambda: ws.get(rng, value_render_option="FORMULA"))
+            for r, row in enumerate(raw, start=1):
+                for c, cell in enumerate(row, start=1):
+                    if isinstance(cell, str) and cell.startswith("="):
+                        formulas.add(self.gspread.utils.rowcol_to_a1(r, c))
+        except Exception as exc:
+            log.debug("Could not read formulas from the second sheet: %s", exc)
+
         updates = []
         matched = 0
+        skipped_formulas = 0
         for shortcode, link, views, likes, comments in entries:
             row_idx = by_code.get(shortcode)
             if not row_idx:
@@ -488,7 +503,12 @@ class SheetClient:
             for name, value in ((COL_VIEWS, views), (COL_LIKES, likes), (COL_COMMENTS, comments)):
                 if isinstance(value, int):   # numbers only; never overwrite with text
                     a1 = self.gspread.utils.rowcol_to_a1(row_idx, lookup[normalize_header(name)])
+                    if a1 in formulas:
+                        skipped_formulas += 1
+                        continue
                     updates.append({"range": a1, "values": [[value]]})
+        if skipped_formulas:
+            log.info("Second sheet: %d cell(s) hold formulas and were left alone.", skipped_formulas)
         if self.dry_run:
             log.info("[dry-run] would update %d row(s) in the second sheet (%d cells)", matched, len(updates))
             return matched
