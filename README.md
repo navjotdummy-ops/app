@@ -288,6 +288,22 @@ for you and show it in its scheduled-tasks list.
 
 ---
 
+## Part 5. The second sheet (IM Campaign Tracker)
+
+After every run the script also copies Views, Likes and Comments into the
+**Tracker** tab of the IM Campaign Tracker sheet. It finds each reel by its
+link in the **Live Link** column and writes only those three cells. Cost,
+Shares, Saves, the formulas and the totals row are never touched. A reel
+that is not listed there is skipped with a note in the log.
+
+For this to work the robot needs Editor access to that sheet too: open it
+with the account that owns it, click **Share**, add the robot email
+(`client_email` in `service-account.json`) as **Editor**.
+
+To change which sheet or tab is mirrored, edit `MIRROR_SHEET_ID` and
+`MIRROR_TAB_GID` near the top of `reel_stats.py`, or pass
+`--mirror-sheet-id` / `--mirror-tab-gid`. `--no-mirror` skips it for one run.
+
 ## What the Status column means
 
 | Status | Meaning | Numbers |

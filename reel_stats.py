@@ -40,6 +40,14 @@ from typing import Any, Iterable, Optional
 # The ID is the long code in the sheet's URL, between /d/ and /edit
 DEFAULT_SHEET_ID = "1nr2tn1tVPsjmElTbRXlZPHW_NbMVkpTfzMtkHryvePs"
 
+# Second sheet that receives a copy of Views / Likes / Comments after each
+# run (the "IM Campaign Tracker"). Rows are matched by the reel link in the
+# "Live Link" column; only the three number columns are written there.
+MIRROR_SHEET_ID = "1P7SkFjY3uezqFZEik8dl08mGi7NzqdLfIm2zmgNHDyM"
+MIRROR_TAB_GID = 727378832          # the gid= part of the tab's URL
+MIRROR_TAB_NAME = "Tracker"         # used if the gid is not found
+MIRROR_LINK_COL = "Live Link"
+
 # Column headers in the first tab (matched by name, case and spaces ignored)
 COL_LINK = "Reel Link"
 COL_CREATOR = "Creator Name"
@@ -424,6 +432,70 @@ class SheetClient:
             for name, value in values.items()
         ]
         self._with_retry(lambda: self.ws.batch_update(payload, value_input_option="RAW"))
+
+    def mirror_stats(self, entries: list[tuple[str, str, Any, Any, Any]], sheet_id: str,
+                     tab_gid: int, tab_name: str) -> int:
+        """
+        Copy Views / Likes / Comments into another sheet. `entries` holds
+        (shortcode, link, views, likes, comments). Rows are matched by the
+        reel link; nothing but those three cells is ever written.
+        Returns the number of rows updated.
+        """
+        if not entries or not sheet_id:
+            return 0
+        try:
+            book = self.client.open_by_key(sheet_id)
+        except self.gspread.exceptions.APIError as exc:
+            raise RuntimeError(
+                "cannot open the second sheet. Share it with the robot email as Editor "
+                f"(see README, Part 5). Details: {exc}") from exc
+        ws = None
+        try:
+            ws = book.get_worksheet_by_id(tab_gid)
+        except Exception:
+            ws = None
+        if ws is None:
+            try:
+                ws = book.worksheet(tab_name)
+            except self.gspread.WorksheetNotFound:
+                raise RuntimeError(f"tab gid={tab_gid} / '{tab_name}' not found in the second sheet")
+
+        values = self._with_retry(ws.get_all_values)
+        if not values:
+            raise RuntimeError("the second sheet's tab is empty")
+        headers = values[0]
+        lookup = {normalize_header(h): i + 1 for i, h in enumerate(headers) if h.strip()}
+        needed = {MIRROR_LINK_COL, COL_VIEWS, COL_LIKES, COL_COMMENTS}
+        missing = [n for n in needed if normalize_header(n) not in lookup]
+        if missing:
+            raise RuntimeError(f"second sheet is missing columns: {', '.join(missing)}")
+        link_col = lookup[normalize_header(MIRROR_LINK_COL)]
+        by_code: dict[str, int] = {}
+        for idx, row in enumerate(values[1:], start=2):
+            link = row[link_col - 1].strip() if len(row) >= link_col else ""
+            code = shortcode_from_url(link)
+            if code:
+                by_code.setdefault(code, idx)
+
+        updates = []
+        matched = 0
+        for shortcode, link, views, likes, comments in entries:
+            row_idx = by_code.get(shortcode)
+            if not row_idx:
+                log.warning("Second sheet: no row with link %s; skipped.", link)
+                continue
+            matched += 1
+            for name, value in ((COL_VIEWS, views), (COL_LIKES, likes), (COL_COMMENTS, comments)):
+                if isinstance(value, int):   # numbers only; never overwrite with text
+                    a1 = self.gspread.utils.rowcol_to_a1(row_idx, lookup[normalize_header(name)])
+                    updates.append({"range": a1, "values": [[value]]})
+        if self.dry_run:
+            log.info("[dry-run] would update %d row(s) in the second sheet (%d cells)", matched, len(updates))
+            return matched
+        if updates:
+            self._with_retry(lambda: ws.batch_update(updates, value_input_option="RAW"))
+        log.info("Second sheet '%s': updated %d row(s).", ws.title, matched)
+        return matched
 
     def append_history(self, entries: list[list[Any]]) -> None:
         if not entries:
@@ -859,6 +931,10 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     p.add_argument("--headless", action="store_true",
                    help="Run the browser invisibly (default is a visible window, which Instagram tolerates better).")
     p.add_argument("--sheet-id", default=DEFAULT_SHEET_ID, help="Google Sheet ID (from the URL).")
+    p.add_argument("--mirror-sheet-id", default=MIRROR_SHEET_ID,
+                   help="Second sheet that gets a copy of Views/Likes/Comments. Empty string to disable.")
+    p.add_argument("--mirror-tab-gid", type=int, default=MIRROR_TAB_GID, help="gid of the tab in the second sheet.")
+    p.add_argument("--no-mirror", action="store_true", help="Skip the second sheet for this run.")
     p.add_argument("--key-file", type=Path, default=DEFAULT_KEY_FILE, help="Service account JSON key.")
     p.add_argument("--profile-dir", type=Path, default=DEFAULT_PROFILE_DIR, help="Browser profile folder.")
     p.add_argument("--min-delay", type=float, default=MIN_DELAY_SECONDS)
@@ -981,6 +1057,17 @@ def main(argv: Optional[list[str]] = None) -> int:
                 log.error("Could not write status for row %s: %s", row.row_number, write_exc)
     finally:
         browser.close()
+
+    if args.mirror_sheet_id and not args.no_mirror:
+        mirror_entries = []
+        for row, stats, status in results:
+            if stats is None or not row.shortcode:
+                continue
+            mirror_entries.append((row.shortcode, row.link, stats.views, stats.likes, stats.comments))
+        try:
+            sheet.mirror_stats(mirror_entries, args.mirror_sheet_id, args.mirror_tab_gid, MIRROR_TAB_NAME)
+        except Exception as exc:
+            log.error("Second sheet not updated: %s", exc)
 
     if history:
         try:
